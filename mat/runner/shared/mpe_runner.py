@@ -22,13 +22,16 @@ class MPERunner(Runner):
         for episode in range(episodes):
             if self.use_linear_lr_decay:
                 self.trainer.policy.lr_decay(episode, episodes)
-
+            self.suc_step = np.ones((self.n_rollout_threads))*self.episode_length
             for step in range(self.episode_length):
                 # Sample actions
                 values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step)
                     
                 # Obser reward and next obs
                 obs, rewards, dones, infos = self.envs.step(actions_env)
+                for i, info in enumerate(infos):
+                    if info[0]['success_rate'] == 1.0 and self.suc_step[i] == self.episode_length:
+                        self.suc_step[i] = step
 
                 data = obs, rewards, dones, infos, values, actions, action_log_probs, rnn_states, rnn_states_critic
 
@@ -63,11 +66,17 @@ class MPERunner(Runner):
                     env_infos = {}
                     for agent_id in range(self.num_agents):
                         idv_rews = []
+                        suc = []
                         for info in infos:
                             if 'individual_reward' in info[agent_id].keys():
                                 idv_rews.append(info[agent_id]['individual_reward'])
+                            if agent_id == 0 and "success_rate" in info[agent_id].keys():
+                                suc.append(info[agent_id]['success_rate'])
                         agent_k = 'agent%i/individual_rewards' % agent_id
                         env_infos[agent_k] = idv_rews
+                        if agent_id == 0:
+                            env_infos["success_rate"] = suc
+                            env_infos["suc_step"] = self.suc_step
 
                 train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
                 print("average episode rewards is {}".format(train_infos["average_episode_rewards"]))

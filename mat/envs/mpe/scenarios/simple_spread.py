@@ -19,6 +19,7 @@ class Scenario(BaseScenario):
             agent.collide = True
             agent.silent = True
             agent.size = 0.15
+            agent.id = i
         # add landmarks
         world.landmarks = [Landmark() for i in range(world.num_landmarks)]
         for i, landmark in enumerate(world.landmarks):
@@ -72,11 +73,24 @@ class Scenario(BaseScenario):
     def reward(self, agent, world):
         # Agents are rewarded based on minimum agent distance to each landmark, penalized for collisions
         rew = 0
+        cover = 0
         for l in world.landmarks:
             dists = [np.sqrt(np.sum(np.square(a.state.p_pos - l.state.p_pos)))
                      for a in world.agents]
             rew -= min(dists)
-
+            
+            if min(dists) <= world.agents[0].size + world.landmarks[0].size:
+                cover += 1
+                # give bonus for cover landmarks
+                rew += 1
+        # success bonus
+        if cover == len(world.landmarks):
+            rew += 4 * len(world.landmarks) 
+        # rew = 0
+        # for l in world.landmarks:
+        #     dists = [np.sqrt(np.sum(np.square(a.state.p_pos - l.state.p_pos)))
+        #              for a in world.agents]
+        #     rew -= min(dists)
         if agent.collide:
             for a in world.agents:
                 if self.is_collision(a, agent):
@@ -88,7 +102,6 @@ class Scenario(BaseScenario):
         entity_pos = []
         for entity in world.landmarks:  # world.entities:
             entity_pos.append(entity.state.p_pos - agent.state.p_pos)
-            # entity_pos.append(entity.state.p_pos)
         # entity colors
         entity_color = []
         for entity in world.landmarks:  # world.entities:
@@ -96,21 +109,24 @@ class Scenario(BaseScenario):
         # communication of all other agents
         comm = []
         other_pos = []
-        other_vel = []
         for other in world.agents:
             if other is agent:
                 continue
             comm.append(other.state.c)
             other_pos.append(other.state.p_pos - agent.state.p_pos)
-            other_vel.append(other.state.p_vel)
-        # print("agent.state.p_vel: ", agent.state.p_vel)
-        # print("agent.state.p_pos: ", agent.state.p_pos)
-        # print("entity_pos: ", entity_pos)
-        # # print("entity_color: ", entity_color)
-        # print("other_pos: ", other_pos)
-        # print("other_vel: ", other_vel)
-        # print("comm: ", comm)
-        # print("obs: ", np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + comm))
-        # return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos)
-        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + comm)
+        
+        id_vector = np.zeros(len(world.agents))
+        id_vector[agent.id] = 1
+        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + [id_vector] + comm)
 
+    def info(self, world):
+        info = {}
+        cover = 0
+        for l in world.landmarks:
+            dists = [np.sqrt(np.sum(np.square(a.state.p_pos - l.state.p_pos)))
+                     for a in world.agents]
+            if min(dists) <= world.agents[0].size + l.size:
+                cover += 1
+        info['success_rate'] = cover / world.num_landmarks      
+
+        return info

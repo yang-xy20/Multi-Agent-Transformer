@@ -48,7 +48,7 @@ class MultiAgentEnv(gym.Env):
         # if true, every agent has the same reward
         self.shared_reward = world.collaborative if hasattr(
             world, 'collaborative') else False
-        #self.shared_reward = False
+        self.shared_reward = False
         self.time = 0
 
         # configure spaces
@@ -146,9 +146,11 @@ class MultiAgentEnv(gym.Env):
             reward_n.append([self._get_reward(agent)])
             done_n.append(self._get_done(agent))
             info = {'individual_reward': self._get_reward(agent)}
-            env_info = self._get_info(agent)
+            env_info = self._get_info()
             if 'fail' in env_info.keys():
                 info['fail'] = env_info['fail']
+            if 'success_rate' in env_info.keys():
+                info['success_rate'] = env_info['success_rate']
             info_n.append(info)
 
         # all agents get total reward in cooperative case, if shared reward, all agents have the same reward, and reward is sum
@@ -189,10 +191,10 @@ class MultiAgentEnv(gym.Env):
         return obs_n
 
     # get info used for benchmarking
-    def _get_info(self, agent):
+    def _get_info(self):
         if self.info_callback is None:
             return {}
-        return self.info_callback(agent, self.world)
+        return self.info_callback( self.world)
 
     # get observation for a particular agent
     def _get_obs(self, agent):
