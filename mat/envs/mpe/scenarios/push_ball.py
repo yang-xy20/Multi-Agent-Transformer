@@ -97,23 +97,32 @@ class Scenario(BaseScenario):
         rew = 0
         cover = 0
         i = 0
-        for land_id, l in enumerate(world.landmarks):
-            dists = [np.sqrt(np.sum(np.square(a.state.p_pos - l.state.p_pos))) for a in world.agents]
-            rew -= min(dists)
-            agent_id = np.argmin(np.array(dists))
+        reach = 0
+        for a in world.agents:
+            if a.first_reach:
+                reach += 1
+        for land_id, l in enumerate(world.landmarks): 
             if land_id < self.num_boxes:
-                if min(dists) <= world.agents[0].size + world.landmarks[0].size \
-                and  (not l.reach) and (not world.agents[agent_id].first_reach):
-                    l.reach = True
-                    world.agents[agent_id].first_reach = True
-                    # give bonus for cover landmarks
-                    rew += 4
+                if not l.reach:
+                    dists = [np.sqrt(np.sum(np.square(a.state.p_pos - l.state.p_pos))) for a in world.agents if not a.first_reach]
+                    #rew -= min(dists)
+                    if min(dists) <= world.agents[0].size + world.landmarks[0].size :
+                        agent_id = np.argmin(np.array(dists))
+                        l.reach = True
+                        world.agents[agent_id].first_reach = True
+                        # give bonus for cover landmarks
+                        rew += 4
             else:
-                if min(dists) <= world.agents[0].size + world.landmarks[0].size \
-                and world.agents[agent_id].first_reach:
-                    cover += 1
-                    # give bonus for cover landmarks
-                    rew += 4
+                dists = [np.sqrt(np.sum(np.square(a.state.p_pos - l.state.p_pos))) for a in world.agents if a.first_reach]
+                dists += np.array([[np.sqrt(np.sum(np.square(a.state.p_pos - world.landmarks[box_id].state.p_pos)))+np.sqrt(np.sum(np.square(world.landmarks[box_id].state.p_pos - l.state.p_pos))) for a in world.agents if not a.first_reach] \
+                for box_id in range(self.num_boxes) if not world.landmarks[box_id].reach]).reshape(-1).tolist()
+                rew -= min(dists)
+                agent_id = np.argmin(np.array(dists))
+                if agent_id < reach:
+                    if min(dists) <= world.agents[0].size + world.landmarks[0].size:
+                        cover += 1
+                        # give bonus for cover landmarks
+                        rew += 4
 
         if cover == self.num_boxes:
             rew += 4 * self.num_boxes            
