@@ -70,6 +70,7 @@ class Scenario(BaseScenario):
             agent.state.p_pos = np.random.uniform(-2.0, +2.0, world.dim_p)
             agent.state.p_vel = np.zeros(world.dim_p)
             agent.state.c = np.zeros(world.dim_c)
+        _,_,_,self.max_distance = self.compute_macro_allocation(world)
 
     def is_collision(self, agent1, agent2):
         delta_pos = agent1.state.p_pos - agent2.state.p_pos
@@ -116,7 +117,7 @@ class Scenario(BaseScenario):
                 dists = [np.sqrt(np.sum(np.square(a.state.p_pos - l.state.p_pos))) for a in world.agents if a.first_reach]
                 dists += np.array([[np.sqrt(np.sum(np.square(a.state.p_pos - world.landmarks[box_id].state.p_pos)))+np.sqrt(np.sum(np.square(world.landmarks[box_id].state.p_pos - l.state.p_pos))) for a in world.agents if not a.first_reach] \
                 for box_id in range(self.num_boxes) if not world.landmarks[box_id].reach]).reshape(-1).tolist()
-                rew -= min(dists)
+                rew -= min(dists)/self.max_distance
                 agent_id = np.argmin(np.array(dists))
                 if agent_id < reach:
                     if min(dists) <= world.agents[0].size + world.landmarks[0].size:
@@ -170,3 +171,31 @@ class Scenario(BaseScenario):
         #     success = True
         info_list = {'success_rate': num/self.num_boxes}
         return info_list
+
+    def compute_macro_allocation(self, world):
+        cost_agent_box = np.zeros((self.num_agents, self.num_boxes))
+        cost_box_land = np.zeros((self.num_boxes, self.num_boxes))
+        for box_id in range(self.num_boxes):
+            box = world.landmarks[box_id]
+            for landmark_id in range(self.num_boxes):  # world.entities:
+                rel_dis = np.sqrt(np.sum(np.square(world.landmarks[landmark_id+self.num_boxes].state.p_pos - box.state.p_pos)))
+                cost_box_land[box_id, landmark_id] = rel_dis
+            for people_id in range(self.num_people):
+                people = world.agents[people_id]
+                rel_dis = np.sqrt(np.sum(np.square(people.state.p_pos - box.state.p_pos)))
+                cost_agent_box[people_id, box_id] = rel_dis
+                
+        bl_row_ind, bl_col_ind = linear_sum_assignment(cost_box_land)
+        ab_row_ind, ab_col_ind = linear_sum_assignment(cost_agent_box)
+        max_distance = cost_box_land.max()+cost_agent_box.max()
+        
+        dists = 0
+        for box_id in range(self.num_boxes):
+            box = world.landmarks[box_id]
+            agent_id = ab_row_ind[box_id]
+            land_id = bl_col_ind[box_id]
+            target_agent = world.agents[agent_id]
+            target_land = world.landmarks[land_id+self.num_boxes]
+            dists += (np.sqrt(np.sum(np.square(box.state.p_pos - target_agent.state.p_pos)))+\
+            np.sqrt(np.sum(np.square(box.state.p_pos - target_land.state.p_pos))))
+        return ab_col_ind, bl_col_ind, dists, max_distance

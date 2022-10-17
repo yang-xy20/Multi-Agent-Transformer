@@ -1,10 +1,11 @@
 import numpy as np
 from mat.envs.mpe.core import World, Agent, Landmark
 from mat.envs.mpe.scenario import BaseScenario
+import os
 
 
 class Scenario(BaseScenario):
-    def make_world(self, args):
+    def make_world(self, args, rank):
         world = World()
         world.world_length = args.episode_length
         # set any world properties first
@@ -18,7 +19,7 @@ class Scenario(BaseScenario):
             agent.name = 'agent %d' % i
             agent.collide = True
             agent.silent = True
-            agent.size = 0.15
+            agent.size = 0.1
             agent.id = i
         # add landmarks
         world.landmarks = [Landmark() for i in range(world.num_landmarks)]
@@ -27,6 +28,30 @@ class Scenario(BaseScenario):
             landmark.collide = False
             landmark.movable = False
         # make initial conditions
+        world.all_pos = np.zeros((world.num_agents,2))
+        dir_name = os.path.dirname(os.path.abspath(__file__)) #2
+        txt_file_path = os.path.join(dir_name, '{}_maps'.format(world.num_agents), "{}agent_simple_spread_map_{}.txt".format(world.num_agents,rank % 4))
+        with open(txt_file_path, "r") as f:
+            num = 0
+            for line in f.readlines():
+                line = line.strip('\n')  #去掉列表中每一个元素的换行符
+                line = line.split()
+                for i in range(2):
+                    world.all_pos[num,i] = float(line[i])
+                num += 1   
+        f.close()
+        world.all_land = np.zeros((world.num_agents,2))
+        dir_name = os.path.dirname(os.path.abspath(__file__)) #2
+        txt_file_path = os.path.join(dir_name, '{}_maps'.format(world.num_agents), "{}agent_simple_spread_land_{}.txt".format(world.num_agents,rank % 4))
+        with open(txt_file_path, "r") as f:
+            num = 0
+            for line in f.readlines():
+                line = line.strip('\n')  #去掉列表中每一个元素的换行符
+                line = line.split()
+                for i in range(2):
+                    world.all_land[num,i] = float(line[i])
+                num += 1   
+        f.close()
         self.reset_world(world)
         return world
 
@@ -37,13 +62,14 @@ class Scenario(BaseScenario):
         world.assign_landmark_colors()
 
         # set random initial states
-        for agent in world.agents:
-            agent.state.p_pos = np.random.uniform(-1, +1, world.dim_p)
+        for i, agent in enumerate(world.agents):
+            agent.state.p_pos = world.all_pos[i].copy()/1.5#np.random.uniform(-1, +1, world.dim_p)
             agent.state.p_vel = np.zeros(world.dim_p)
             agent.state.c = np.zeros(world.dim_c)
         for i, landmark in enumerate(world.landmarks):
-            landmark.state.p_pos = 0.8 * np.random.uniform(-1, +1, world.dim_p)
+            landmark.state.p_pos = world.all_land[i].copy()/1.5#0.8 * np.random.uniform(-1, +1, world.dim_p)#
             landmark.state.p_vel = np.zeros(world.dim_p)
+        self.max_dis = self.max_distance(world)
 
     def benchmark_data(self, agent, world):
         rew = 0
@@ -77,7 +103,7 @@ class Scenario(BaseScenario):
         for l in world.landmarks:
             dists = [np.sqrt(np.sum(np.square(a.state.p_pos - l.state.p_pos)))
                      for a in world.agents]
-            rew -= min(dists)
+            rew -= min(dists)/self.max_dis
             
             if min(dists) <= world.agents[0].size + world.landmarks[0].size:
                 cover += 1
@@ -130,3 +156,20 @@ class Scenario(BaseScenario):
         info['success_rate'] = cover / world.num_landmarks      
 
         return info
+    
+    def max_distance(self, world):
+        cost = np.zeros((len(world.agents), len(world.landmarks)))
+        all_distance = []
+        for agent_id, agent in enumerate(world.agents):
+            for landmark_id, entity in enumerate(world.landmarks):  # world.entities:
+                rel_dis = np.sqrt(np.sum(np.square(entity.state.p_pos - agent.state.p_pos)))
+                cost[agent_id, landmark_id] = rel_dis
+                
+            
+        # row_ind, col_ind = linear_sum_assignment(cost)
+        al_max_dis = cost.max()
+        # for a in world.agents:
+        #     goal_id = col_ind[a.id]
+        #     target_goal = world.landmarks[goal_id]
+        #     dists += np.sqrt(np.sum(np.square(a.state.p_pos - target_goal.state.p_pos))) / al_max_dis
+        return al_max_dis

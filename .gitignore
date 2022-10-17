@@ -1,3 +1,5 @@
 .DS_Store
 **/__pycache__/**
 mat/scripts/results/
+mat/envs/mpe/scenarios/20_maps/
+mat/envs/mpe/scenarios/50_maps/
