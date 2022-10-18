@@ -1,16 +1,16 @@
 env="MPE"
 scenario="simple_spread"  # simple_speaker_listener # simple_reference simple_spread
-num_landmarks=20
-num_agents=20
+num_landmarks=50
+num_agents=50
 algo="mat"
-exp="simple_spread_mat_20agents"
+exp="simple_spread_mat_50agents"
 seed=1
 
 echo "env is ${env}, scenario is ${scenario}, algo is ${algo}, exp is ${exp}, seed is ${seed}"
-CUDA_VISIBLE_DEVICES=1 python train/train_mpe.py --env_name ${env} --algorithm_name ${algo} \
+CUDA_VISIBLE_DEVICES=2 python train/train_mpe.py --env_name ${env} --algorithm_name ${algo} \
 --experiment_name ${exp} --scenario_name ${scenario} --num_agents ${num_agents} \
---num_landmarks ${num_landmarks} --seed ${seed} --n_block 1 --n_embd 64 --n_training_threads 1 \
---n_rollout_threads 256 --num_mini_batch 5 --episode_length 100 --num_env_steps 200000000 --ppo_epoch 3 \
+--num_landmarks ${num_landmarks} --seed 2 --n_block 1 --n_embd 64 --n_training_threads 1 \
+--n_rollout_threads 256 --num_mini_batch 20 --episode_length 120 --num_env_steps 200000000 --ppo_epoch 3 \
 --clip_param 0.05 --use_ReLU --gain 0.01 --lr 7e-4 --critic_lr 7e-4 --wandb_name "mapping" \
 --user_name "yang-xy20"
 

@@ -4,7 +4,7 @@ from mat.envs.mpe.scenario import BaseScenario
 from scipy.optimize import linear_sum_assignment
 
 class Scenario(BaseScenario):
-    def make_world(self, args):
+    def make_world(self, args, rank):
         world = World()
         # set any world properties first
         world.name = 'ball'
@@ -50,6 +50,40 @@ class Scenario(BaseScenario):
             landmark.cover = 0
             # landmark.boundary = False
         # make initial conditions
+        world.landmarks = [Landmark() for i in range(self.num_landmarks)]
+        for i, landmark in enumerate(world.landmarks):
+            landmark.name = 'landmark %d' % i
+            landmark.collide = False
+            landmark.movable = False
+            landmark.reach = False
+            landmark.size = 0.15
+            landmark.cover = 0
+            # landmark.boundary = False
+        # make initial conditions
+        world.all_pos = np.zeros((self.num_agents*2,2))
+        dir_name = os.path.dirname(os.path.abspath(__file__)) #2
+        txt_file_path = os.path.join(dir_name, '{}_maps'.format(self.num_agents), "{}agent_push_ball_map_{}.txt".format(self.num_agents,rank % 4))
+        with open(txt_file_path, "r") as f:
+            num = 0
+            for line in f.readlines():
+                line = line.strip('\n')  #去掉列表中每一个元素的换行符
+                line = line.split()
+                for i in range(2):
+                    world.all_pos[num,i] = float(line[i])
+                num += 1   
+        f.close()
+        world.all_ball = np.zeros((self.num_agents,2))
+        dir_name = os.path.dirname(os.path.abspath(__file__)) #2
+        txt_file_path = os.path.join(dir_name, '{}_maps'.format(self.num_agents), "{}agent_push_ball_ball_{}.txt".format(self.num_agents,rank % 4))
+        with open(txt_file_path, "r") as f:
+            num = 0
+            for line in f.readlines():
+                line = line.strip('\n')  #去掉列表中每一个元素的换行符
+                line = line.split()
+                for i in range(2):
+                    world.all_ball[num,i] = float(line[i])
+                num += 1   
+        f.close()
         self.reset_world(world)
         return world
 
@@ -62,12 +96,12 @@ class Scenario(BaseScenario):
             landmark.color = np.array([0.85, 0.35, 0.35]) if i < self.num_agents else np.array([0, 0, 0])
         # set random initial states
         for i, landmark in enumerate(world.landmarks):
-            landmark.state.p_pos = np.random.uniform(-2.0, +2.0, world.dim_p)
+            landmark.state.p_pos = world.all_ball[i].copy()/1.5 if i<self.num_boxes else world.all_pos[2*(i-self.num_boxes)+1].copy()/1.5#np.random.uniform(-2.0, +2.0, world.dim_p)
             landmark.state.p_vel = np.zeros(world.dim_p) 
             landmark.reach = False      
         for agent in world.agents:
             agent.first_reach = False
-            agent.state.p_pos = np.random.uniform(-2.0, +2.0, world.dim_p)
+            agent.state.p_pos = world.all_pos[2*i].copy()/1.5#np.random.uniform(-2.0, +2.0, world.dim_p)
             agent.state.p_vel = np.zeros(world.dim_p)
             agent.state.c = np.zeros(world.dim_c)
         _,_,_,self.max_distance = self.compute_macro_allocation(world)
@@ -117,7 +151,7 @@ class Scenario(BaseScenario):
                 dists = [np.sqrt(np.sum(np.square(a.state.p_pos - l.state.p_pos))) for a in world.agents if a.first_reach]
                 dists += np.array([[np.sqrt(np.sum(np.square(a.state.p_pos - world.landmarks[box_id].state.p_pos)))+np.sqrt(np.sum(np.square(world.landmarks[box_id].state.p_pos - l.state.p_pos))) for a in world.agents if not a.first_reach] \
                 for box_id in range(self.num_boxes) if not world.landmarks[box_id].reach]).reshape(-1).tolist()
-                rew -= min(dists)/self.max_distance
+                #rew -= min(dists)/self.max_distance
                 agent_id = np.argmin(np.array(dists))
                 if agent_id < reach:
                     if min(dists) <= world.agents[0].size + world.landmarks[0].size:
@@ -138,7 +172,16 @@ class Scenario(BaseScenario):
         # get positions of all entities in this agent's reference frame
         entity_pos = []
         for land_id, entity in enumerate(world.landmarks):  # world.entities:
-            entity_pos.append(entity.state.p_pos - agent.state.p_pos)  
+            if agent.first_reach:
+                if land_id<self.num_boxes:
+                    entity_pos.append([0,0])
+                else:
+                    entity_pos.append(entity.state.p_pos - agent.state.p_pos)
+            else:
+                if land_id<self.num_boxes and entity.reach:
+                    entity_pos.append([1e6,1e6])
+                else:
+                    entity_pos.append(entity.state.p_pos - agent.state.p_pos)
         # entity colors
         entity_color = []
         for entity in world.landmarks:  # world.entities:
@@ -152,11 +195,14 @@ class Scenario(BaseScenario):
             comm.append(other.state.c)
             other_pos.append(other.state.p_pos - agent.state.p_pos)
 
-        id_vector = np.zeros(2)
+        id_vector = np.zeros((2))
         if agent.first_reach:
-            id_vector = np.ones(2)
+            id_vector[1] = 1
+        else:
+            id_vector[0] = 1
         
-        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + comm + other_pos)
+        
+        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + [id_vector] + entity_pos + comm + other_pos)
     
     def info(self, world):
         num = 0
